@@ -1,10 +1,172 @@
 # migrationix
 
+<!-- simit:badges:start -->
+
+[![CI](https://img.shields.io/badge/CI-managed-2088ff)](.forgejo/workflows/ci.yaml) [![Nix](https://img.shields.io/badge/Nix-managed-5277c3)](flake.nix) [![docs](https://img.shields.io/badge/docs-enabled-6f42c1)](https://docs.rs/migrationix)
+
+<!-- simit:badges:end -->
+
 `migrationix` provides generic NixOS systemd wiring for project-owned,
 idempotent migrations.
 
 The flake does not know about a migration framework, database, or application.
-Consumers provide full commands and dependency ordering:
+Projects keep their own migration engine and expose an idempotent CLI command;
+`migrationix` owns the deployment envelope around that command.
+
+## Project surface
+
+For Rust/Postgres services such as Pink Raven and SynDB, prefer the project
+surface. It lowers into the raw migration units described below:
+
+```nix
+{
+  imports = [inputs.migrationix.nixosModules.default];
+
+  services.migrationix.projects.my-app = {
+    enable = true;
+    description = "My App database migrations";
+
+    runner = {
+      package = pkgs.my-app;
+      executable = "bin/my-app";
+      args = ["db" "migrate" "--database-url" "postgres:///my_app?host=/run/postgresql"];
+      checkArgs = ["db" "migrate" "--check" "--database-url" "postgres:///my_app?host=/run/postgresql"];
+    };
+
+    user = "my_app_migrator";
+    group = "my_app";
+    runtimeUnits = ["my-app.service" "my-app-worker.service"];
+
+    postgres = {
+      enable = true;
+      databaseUrl = "postgres:///my_app?host=/run/postgresql";
+      setupUnits = ["postgresql-setup.service"];
+      grants = {
+        enable = true;
+        runtimeRole = "my_app";
+      };
+    };
+
+    serviceConfig.ReadWritePaths = ["/var/lib/my-app"];
+  };
+}
+```
+
+This generates `migrationix-my-app.service` and, when `checkArgs` or
+`checkCommand` is set, `migrationix-my-app-check.service`. Runtime units are
+ordered after the migration unit and require it, so each start can re-run the
+idempotent migration command.
+
+### Pink Raven shape
+
+Pink Raven should keep SQLx migrations behind its `raven db migrate` CLI and
+let `migrationix` own ordering, migration/runtime user separation, and grants:
+
+```nix
+services.migrationix.projects.pink-raven = {
+  enable = true;
+  runner = {
+    package = config.services.pink-raven.package;
+    executable = "bin/raven";
+    args = commonArgs ++ ["db" "migrate"];
+    checkArgs = commonArgs ++ ["db" "migrate" "--check"];
+  };
+  user = "can";
+  group = "pink_raven";
+  runtimeUnits = ["pink-raven.service" "pink-raven-worker.service"];
+  postgres = {
+    enable = true;
+    databaseUrl = "postgres:///pink_raven?host=/run/postgresql";
+    setupUnits = ["postgresql-setup.service"];
+    grants = {
+      enable = true;
+      runtimeRole = "pink_raven";
+    };
+  };
+  serviceConfig.ReadWritePaths = ["/data/nvme0/can/state/pink-raven"];
+};
+```
+
+### SynDB shape
+
+SynDB exposes its SeaORM metadata migrator and ClickHouse lifecycle commands
+through `syndb migrate`. Register all four operations with `migrationix`; only
+the Postgres and ClickHouse schema operations are automatic:
+
+```nix
+services.migrationix.projects.syndb = {
+  enable = true;
+  operations = {
+    postgres = {
+      enable = true;
+      backend = "postgres";
+      runner = {
+        package = pkgs.syndb-cli;
+        executable = "bin/syndb";
+        args = ["migrate" "postgres" "--database-url" "postgres:///syndb?host=/run/postgresql"];
+        checkArgs = ["migrate" "postgres" "--check" "--database-url" "postgres:///syndb?host=/run/postgresql"];
+      };
+    };
+    clickhouse-schema = {
+      enable = true;
+      backend = "clickhouse";
+      runner = {
+        package = pkgs.syndb-cli;
+        executable = "bin/syndb";
+        args = ["migrate" "ensure-schema" "--database" "syndb"];
+        checkArgs = ["migrate" "ensure-schema" "--database" "syndb" "--check"];
+      };
+    };
+    mv-backfill = {
+      enable = true;
+      backend = "clickhouse";
+      phase = "backfill";
+      safety = "operator_confirmed";
+      dependsOn = ["clickhouse-schema"];
+      runner = {
+        package = pkgs.syndb-cli;
+        executable = "bin/syndb";
+        args = ["migrate" "mv-backfill" "--database" "syndb"];
+        checkArgs = ["migrate" "ensure-schema" "--database" "syndb" "--check"];
+      };
+    };
+    provenance-events-to-distributed = {
+      enable = true;
+      backend = "clickhouse";
+      phase = "operational";
+      safety = "operator_confirmed";
+      dependsOn = ["clickhouse-schema"];
+      runner = {
+        package = pkgs.syndb-cli;
+        executable = "bin/syndb";
+        args = ["migrate" "provenance-events-to-distributed" "--database" "syndb" "--reason" "operator supplied reason"];
+        checkArgs = ["migrate" "ensure-schema" "--database" "syndb" "--check"];
+      };
+    };
+  };
+  runtimeUnits = ["syndb-api.service"];
+  postgres = {
+    enable = true;
+    databaseUrl = "postgres:///syndb?host=/run/postgresql";
+    setupUnits = ["postgresql-setup.service"];
+  };
+};
+```
+
+The generated activation unit runs only automatic operations. Operators run a
+manual operation with the manifest and explicit `--operation` plus `--confirm`;
+SynDB’s provenance command still requires its existing reason and journal
+preconditions. The generic invocation is:
+
+```sh
+migrationix apply --manifest /path/to/syndb-plan.json \
+  --operation mv-backfill --confirm
+```
+
+## Raw migration surface
+
+Use the raw surface when a project needs complete control over the command or
+when the migration is not tied to the project-level Postgres conventions:
 
 ```nix
 {
