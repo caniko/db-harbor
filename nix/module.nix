@@ -525,12 +525,40 @@
     wants = migration.wants;
     before = migration.beforeUnits;
     requiredBy = migration.requiredByUnits;
+    # A migration is a deployment gate, not a one-shot dependency that only
+    # runs when an application happens to be started.  Want it from the
+    # normal boot target so a corrected candidate gets another chance after a
+    # previous migration failure, and restart it when its generated command
+    # or manifest changes during NixOS activation.
+    wantedBy = lib.optionals (migration.requiredByUnits != []) ["multi-user.target"];
+    restartIfChanged = true;
+    stopIfChanged = true;
     serviceConfig =
       serviceConfigFor migration
       // {
         ExecStart = migration.command;
       };
   };
+
+  runtimeActivationService = name: migration:
+    mkIf (migration.requiredByUnits != []) {
+      description = "Start ${migration.description} runtime units after a successful migration";
+      after = ["migrationix-${name}.service"];
+      requires = ["migrationix-${name}.service"];
+      wantedBy = ["multi-user.target"];
+      restartIfChanged = true;
+      stopIfChanged = true;
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = pkgs.writeShellScript "migrationix-${name}-start-runtime" ''
+          set -eu
+          for unit in ${lib.escapeShellArgs migration.requiredByUnits}; do
+            ${pkgs.systemd}/bin/systemctl reset-failed "$unit" || true
+            ${pkgs.systemd}/bin/systemctl start --no-block "$unit"
+          done
+        '';
+      };
+    };
 
   checkService = name: migration:
     mkIf (migration.checkCommand != null) {
@@ -640,6 +668,9 @@ in {
           enabledMigrations)
           (lib.mapAttrs' (name: migration:
             lib.nameValuePair "migrationix-${name}-check" (checkService name migration))
+          enabledMigrations)
+          (lib.mapAttrs' (name: migration:
+            lib.nameValuePair "migrationix-${name}-activate" (runtimeActivationService name migration))
           enabledMigrations)
         ];
     })
