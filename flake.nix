@@ -2,12 +2,14 @@
   description = "migrationix - generic NixOS systemd wiring for idempotent project migrations";
 
   inputs = {
+    rs-harbor.url = "git+https://codeberg.org/caniko/rs-harbor.git?ref=trunk&rev=9bfa8bdb0ecb22d7bc11448665f7fbaebae7a759";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     crane.url = "github:ipetkov/crane";
   };
 
   outputs = {
     self,
+    rs-harbor,
     nixpkgs,
     crane,
   }: let
@@ -45,7 +47,16 @@
         };
       };
       cargoArtifacts = craneLib.buildDepsOnly commonArgs;
-      migrationix = craneLib.buildPackage (commonArgs // {inherit cargoArtifacts;});
+      buildCache = rs-harbor.lib.mkBuildCachePolicy {
+        inherit pkgs;
+        sccachePackage = rs-harbor.packages.${pkgs.stdenv.hostPlatform.system}.sccache;
+        cacheRoot = null;
+        namespaceScope = "canix-rust";
+        namespaceGeneration = 5;
+      };
+      migrationix = buildCache.withRustCache {
+        package = craneLib.buildPackage (commonArgs // {inherit cargoArtifacts;});
+      };
     in {
       inherit migrationix;
       default = migrationix;
