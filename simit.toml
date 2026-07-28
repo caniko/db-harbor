@@ -1,7 +1,8 @@
 [ci]
 runtime = "nix"
-runner = "atlas-nix-trusted"
+runner = "codefloe-global"
 workspace = true
 with_nextest = true
 with_docs = true
-publish_crates = false
+provider = "crow"
+platform = "forgejo"

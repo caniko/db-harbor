@@ -2,16 +2,19 @@
 
 <!-- simit:badges:start -->
 
-[![CI](https://img.shields.io/badge/CI-managed-2088ff)](.forgejo/workflows/ci.yaml) [![Nix](https://img.shields.io/badge/Nix-managed-5277c3)](flake.nix) [![docs](https://img.shields.io/badge/docs-enabled-6f42c1)](https://docs.rs/migrationix)
+[![CI](https://img.shields.io/badge/CI-drift-2088ff)](.forgejo/workflows/ci.yaml) [![Nix](https://img.shields.io/badge/Nix-managed-5277c3)](flake.nix) [![docs](https://img.shields.io/badge/docs-enabled-6f42c1)](https://docs.rs/migrationix)
 
 <!-- simit:badges:end -->
 
-`migrationix` provides generic NixOS systemd wiring for project-owned,
-idempotent migrations.
+`migrationix` provides generic database-operation plans and NixOS systemd
+wiring for project-owned database work.
 
 The flake does not know about a migration framework, database, or application.
-Projects keep their own migration engine and expose an idempotent CLI command;
-`migrationix` owns the deployment envelope around that command.
+Projects keep their own database engine or operational command and expose
+structured apply/check commands; `migrationix` owns dependency ordering,
+confirmation policy, readiness checks, and the deployment envelope around
+those commands. Operations can cover schema changes, backfills, backups,
+maintenance, replication, and cutovers.
 
 ## Project surface
 
