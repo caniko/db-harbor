@@ -1,5 +1,5 @@
 {
-  description = "migrationix - generic NixOS systemd wiring for idempotent project migrations";
+  description = "db-harbor - generic database-operation plans and NixOS systemd wiring";
 
   inputs = {
     rs-harbor.url = "git+https://codeberg.org/caniko/rs-harbor.git?ref=trunk&rev=9bfa8bdb0ecb22d7bc11448665f7fbaebae7a759";
@@ -25,8 +25,9 @@
           craneLib = crane.mkLib (import nixpkgs {inherit system;});
         });
   in {
-    nixosModules.migrationix = import ./nix/module.nix;
-    nixosModules.default = self.nixosModules.migrationix;
+    nixosModules.db-harbor = import ./nix/module.nix;
+    nixosModules.pg-backup = import ./nix/pg-backup.nix;
+    nixosModules.default = self.nixosModules.db-harbor;
 
     packages = forAllSystems ({
       pkgs,
@@ -35,15 +36,15 @@
     }: let
       commonArgs = {
         src = craneLib.cleanCargoSource ./.;
-        pname = "migrationix";
+        pname = "db-harbor";
         version = "0.1.0";
         strictDeps = true;
         cargoExtraArgs = "--locked";
         meta = {
-          description = "Generic migration plans and deployment orchestration for Rust services";
+          description = "Generic database-operation plans and deployment orchestration for services";
           homepage = "https://codeberg.org/caniko/migrationix";
           license = pkgs.lib.licenses.asl20;
-          mainProgram = "migrationix";
+          mainProgram = "db-harbor";
         };
       };
       cargoArtifacts = craneLib.buildDepsOnly commonArgs;
@@ -54,12 +55,12 @@
         namespaceScope = "canix-rust";
         namespaceGeneration = 5;
       };
-      migrationix = buildCache.withRustCache {
+      db-harbor = buildCache.withRustCache {
         package = craneLib.buildPackage (commonArgs // {inherit cargoArtifacts;});
       };
     in {
-      inherit migrationix;
-      default = migrationix;
+      inherit db-harbor;
+      default = db-harbor;
     });
 
     checks = forAllSystems ({
@@ -70,7 +71,7 @@
       src = craneLib.cleanCargoSource ./.;
       commonArgs = {
         inherit src;
-        pname = "migrationix";
+        pname = "db-harbor";
         version = "0.1.0";
         strictDeps = true;
         cargoExtraArgs = "--locked";
@@ -79,10 +80,14 @@
     in {
       module-smoke = pkgs.callPackage ./nix/test-module.nix {
         module = self.nixosModules.default;
-        migrationixPackage = self.packages.${pkgs.stdenv.hostPlatform.system}.migrationix;
+        dbHarborPackage = self.packages.${pkgs.stdenv.hostPlatform.system}.db-harbor;
       };
-      migrationix = self.packages.${pkgs.stdenv.hostPlatform.system}.migrationix;
-      cargo-fmt = craneLib.cargoFmt commonArgs;
+      pg-backup-eval = pkgs.callPackage ./nix/pg-backup-eval.nix {};
+      db-harbor = self.packages.${pkgs.stdenv.hostPlatform.system}.db-harbor;
+      cargo-fmt = craneLib.cargoFmt {
+        inherit src;
+        pname = "db-harbor";
+      };
       cargo-test = craneLib.cargoTest (commonArgs
         // {
           inherit cargoArtifacts;

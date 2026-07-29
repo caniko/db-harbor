@@ -1,17 +1,17 @@
-# migrationix
+# db-harbor
 
 <!-- simit:badges:start -->
 
-[![CI](https://img.shields.io/badge/CI-drift-2088ff)](.forgejo/workflows/ci.yaml) [![Nix](https://img.shields.io/badge/Nix-managed-5277c3)](flake.nix) [![docs](https://img.shields.io/badge/docs-enabled-6f42c1)](https://docs.rs/migrationix)
+[![CI](https://img.shields.io/badge/CI-drift-2088ff)](.forgejo/workflows/ci.yaml) [![Nix](https://img.shields.io/badge/Nix-managed-5277c3)](flake.nix) [![docs](https://img.shields.io/badge/docs-enabled-6f42c1)](https://docs.rs/db-harbor)
 
 <!-- simit:badges:end -->
 
-`migrationix` provides generic database-operation plans and NixOS systemd
+`db-harbor` provides generic database-operation plans and NixOS systemd
 wiring for project-owned database work.
 
 The flake does not know about a migration framework, database, or application.
 Projects keep their own database engine or operational command and expose
-structured apply/check commands; `migrationix` owns dependency ordering,
+structured apply/check commands; `db-harbor` owns dependency ordering,
 confirmation policy, readiness checks, and the deployment envelope around
 those commands. Operations can cover schema changes, backfills, backups,
 maintenance, replication, and cutovers.
@@ -23,9 +23,9 @@ surface. It lowers into the raw migration units described below:
 
 ```nix
 {
-  imports = [inputs.migrationix.nixosModules.default];
+  imports = [inputs.db-harbor.nixosModules.default];
 
-  services.migrationix.projects.my-app = {
+  services.db-harbor.projects.my-app = {
     enable = true;
     description = "My App database migrations";
 
@@ -55,18 +55,18 @@ surface. It lowers into the raw migration units described below:
 }
 ```
 
-This generates `migrationix-my-app.service` and, when `checkArgs` or
-`checkCommand` is set, `migrationix-my-app-check.service`. Runtime units are
+This generates `db-harbor-my-app.service` and, when `checkArgs` or
+`checkCommand` is set, `db-harbor-my-app-check.service`. Runtime units are
 ordered after the migration unit and require it, so each start can re-run the
 idempotent migration command.
 
 ### Pink Raven shape
 
 Pink Raven should keep SQLx migrations behind its `raven db migrate` CLI and
-let `migrationix` own ordering, migration/runtime user separation, and grants:
+let `db-harbor` own ordering, migration/runtime user separation, and grants:
 
 ```nix
-services.migrationix.projects.pink-raven = {
+services.db-harbor.projects.pink-raven = {
   enable = true;
   runner = {
     package = config.services.pink-raven.package;
@@ -93,11 +93,11 @@ services.migrationix.projects.pink-raven = {
 ### SynDB shape
 
 SynDB exposes its SeaORM metadata migrator and ClickHouse lifecycle commands
-through `syndb migrate`. Register all four operations with `migrationix`; only
+through `syndb migrate`. Register all four operations with `db-harbor`; only
 the Postgres and ClickHouse schema operations are automatic:
 
 ```nix
-services.migrationix.projects.syndb = {
+services.db-harbor.projects.syndb = {
   enable = true;
   operations = {
     postgres = {
@@ -162,7 +162,7 @@ SynDB’s provenance command still requires its existing reason and journal
 preconditions. The generic invocation is:
 
 ```sh
-migrationix apply --manifest /path/to/syndb-plan.json \
+db-harbor apply --manifest /path/to/syndb-plan.json \
   --operation mv-backfill --confirm
 ```
 
@@ -173,9 +173,9 @@ when the migration is not tied to the project-level Postgres conventions:
 
 ```nix
 {
-  imports = [inputs.migrationix.nixosModules.default];
+  imports = [inputs.db-harbor.nixosModules.default];
 
-  services.migrationix.migrations.my-app = {
+  services.db-harbor.migrations.my-app = {
     enable = true;
     command = "${pkgs.my-app}/bin/my-app migrate";
     checkCommand = "${pkgs.my-app}/bin/my-app migrate --check";
@@ -188,6 +188,6 @@ when the migration is not tied to the project-level Postgres conventions:
 }
 ```
 
-This generates `migrationix-my-app.service`, a `Type=oneshot` unit without
+This generates `db-harbor-my-app.service`, a `Type=oneshot` unit without
 `RemainAfterExit`, so starting a dependent application unit can re-run the
 idempotent migration command when needed.

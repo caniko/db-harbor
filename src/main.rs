@@ -1,13 +1,13 @@
 use std::{collections::BTreeSet, path::PathBuf, process::ExitCode};
 
 use clap::{Args, Parser, Subcommand};
-use migrationix::{MigrationError, RunMode, RunOptions, load_plan, run_plan};
+use db_harbor::{MigrationError, RunMode, RunOptions, load_plan, run_plan};
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "migrationix",
+    name = "db-harbor",
     version,
-    about = "Apply and check structured migration plans"
+    about = "Apply and check structured database-operation plans"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -18,7 +18,7 @@ struct Cli {
 enum Command {
     /// Apply automatic operations, or explicitly selected operator operations.
     Apply(RunArgs),
-    /// Run read-only migration checks.
+    /// Run read-only database-state checks.
     Check(RunArgs),
     /// Validate a plan without contacting any database.
     Validate(PlanArgs),
@@ -26,7 +26,7 @@ enum Command {
 
 #[derive(Debug, Args)]
 struct PlanArgs {
-    /// JSON or TOML migration plan.
+    /// JSON or TOML database-operation plan.
     #[arg(long)]
     manifest: PathBuf,
 }
@@ -48,7 +48,7 @@ async fn main() -> ExitCode {
     match run().await {
         Ok(code) => code,
         Err(error) => {
-            eprintln!("migrationix: {error}");
+            eprintln!("db-harbor: {error}");
             ExitCode::from(1)
         }
     }
@@ -59,7 +59,7 @@ async fn run() -> Result<ExitCode, MigrationError> {
     match cli.command {
         Command::Validate(args) => {
             load_plan(args.manifest).await?;
-            println!("migration plan is valid");
+            println!("database-operation plan is valid");
             Ok(ExitCode::SUCCESS)
         }
         Command::Apply(args) => run_plan_command(args, RunMode::Apply).await,

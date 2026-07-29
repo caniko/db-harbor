@@ -1,5 +1,5 @@
 [package]
-name = "migrationix"
+name = "db-harbor"
 version = "0.1.0"
 description = "Generic migration plans and deployment orchestration for Rust services"
 edition = "2024"
@@ -13,7 +13,7 @@ homepage = "https://codeberg.org/caniko/migrationix"
 path = "src/lib.rs"
 
 [[bin]]
-name = "migrationix"
+name = "db-harbor"
 path = "src/main.rs"
 
 [dependencies]

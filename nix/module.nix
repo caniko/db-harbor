@@ -6,10 +6,10 @@
 }: let
   inherit (lib) mkEnableOption mkIf mkMerge mkOption optionalAttrs types;
 
-  cfg = config.services.migrationix;
+  cfg = config.services.db-harbor;
 
-  migrationixPackage = pkgs.rustPlatform.buildRustPackage {
-    pname = "migrationix";
+  dbHarborPackage = pkgs.rustPlatform.buildRustPackage {
+    pname = "db-harbor";
     version = "0.1.0";
     src = ../.;
     cargoLock.lockFile = ../Cargo.lock;
@@ -19,89 +19,89 @@
 
   migrationType = types.submodule ({name, ...}: {
     options = {
-      enable = mkEnableOption "migrationix migration ${name}";
+      enable = mkEnableOption "db-harbor database operation ${name}";
 
       description = mkOption {
         type = types.str;
-        default = "${name} migration";
-        description = "Human-readable description for the migration unit.";
+        default = "${name} database operation";
+        description = "Human-readable description for the database-operation unit.";
       };
 
       command = mkOption {
         type = types.str;
-        description = "Full command that applies this migration idempotently.";
+        description = "Full command that applies this database operation idempotently.";
       };
 
       checkCommand = mkOption {
         type = types.nullOr types.str;
         default = null;
-        description = "Optional read-only command that reports pending or incompatible migrations.";
+        description = "Optional read-only command that reports pending or incompatible database state.";
       };
 
       user = mkOption {
         type = types.nullOr types.str;
         default = null;
-        description = "User to run the migration command as.";
+        description = "User to run the database operation as.";
       };
 
       group = mkOption {
         type = types.nullOr types.str;
         default = null;
-        description = "Group to run the migration command as.";
+        description = "Group to run the database operation as.";
       };
 
       environment = mkOption {
         type = types.attrsOf types.str;
         default = {};
-        description = "Environment variables for migration units.";
+        description = "Environment variables for database-operation units.";
       };
 
       path = mkOption {
         type = types.listOf types.package;
         default = [];
-        description = "Packages added to PATH for migration units.";
+        description = "Packages added to PATH for database-operation units.";
       };
 
       loadCredentials = mkOption {
         type = types.listOf types.str;
         default = [];
-        description = "systemd LoadCredential entries for migration units.";
+        description = "systemd LoadCredential entries for database-operation units.";
       };
 
       after = mkOption {
         type = types.listOf types.str;
         default = [];
-        description = "Units this migration unit should start after.";
+        description = "Units this database-operation unit should start after.";
       };
 
       requires = mkOption {
         type = types.listOf types.str;
         default = [];
-        description = "Units required by this migration unit.";
+        description = "Units required by this database-operation unit.";
       };
 
       wants = mkOption {
         type = types.listOf types.str;
         default = [];
-        description = "Units wanted by this migration unit.";
+        description = "Units wanted by this database-operation unit.";
       };
 
       beforeUnits = mkOption {
         type = types.listOf types.str;
         default = [];
-        description = "Application units ordered after this migration unit.";
+        description = "Application units ordered after this database-operation unit.";
       };
 
       requiredByUnits = mkOption {
         type = types.listOf types.str;
         default = [];
-        description = "Application units that require this migration unit.";
+        description = "Application units that require this database-operation unit.";
       };
 
       serviceConfig = mkOption {
         type = types.attrs;
         default = {};
-        description = "Additional or overriding systemd serviceConfig for migration units.";
+        description = "Additional or overriding systemd serviceConfig for database-operation units.";
       };
     };
   });
@@ -149,7 +149,7 @@
 
   operationType = types.submodule ({name, ...}: {
     options = {
-      enable = mkEnableOption "migrationix operation ${name}";
+      enable = mkEnableOption "db-harbor database operation ${name}";
 
       backend = mkOption {
         type = types.enum ["generic" "postgres" "clickhouse"];
@@ -250,7 +250,7 @@
 
   projectType = types.submodule ({name, ...}: {
     options = {
-      enable = mkEnableOption "migrationix project ${name}";
+      enable = mkEnableOption "db-harbor project ${name}";
 
       description = mkOption {
         type = types.str;
@@ -261,13 +261,13 @@
       runner = mkOption {
         type = runnerType;
         default = {};
-        description = "Command runner used to apply and optionally check migrations.";
+        description = "Command runner used to apply and optionally check database state.";
       };
 
       operations = mkOption {
         type = types.attrsOf operationType;
         default = {};
-        description = "Structured migration operations. The runner shorthand becomes the default operation.";
+        description = "Structured database operations. The runner shorthand becomes the default operation.";
       };
 
       user = mkOption {
@@ -327,13 +327,13 @@
       serviceConfig = mkOption {
         type = types.attrs;
         default = {};
-        description = "Additional or overriding systemd serviceConfig for generated migration units.";
+        description = "Additional or overriding systemd serviceConfig for generated database-operation units.";
       };
 
       postgres = mkOption {
         type = postgresType;
         default = {};
-        description = "PostgreSQL-specific ordering and post-migration helpers.";
+        description = "PostgreSQL-specific ordering and post-operation helpers.";
       };
     };
   });
@@ -370,7 +370,7 @@
   sqlLiteral = value: "'" + builtins.replaceStrings ["'"] ["''"] value + "'";
 
   fullCommandSpec = name: suffix: command: let
-    script = pkgs.writeShellScript "migrationix-${name}-${suffix}" ''
+    script = pkgs.writeShellScript "db-harbor-${name}-${suffix}" ''
       set -eu
       ${command}
     '';
@@ -460,25 +460,25 @@
       depends_on = ["default"];
     };
   in
-    pkgs.writeText "migrationix-${name}-plan.json" (builtins.toJSON {
+    pkgs.writeText "db-harbor-${name}-plan.json" (builtins.toJSON {
       version = 1;
       inherit name;
       operations = baseOperations ++ grantOperation;
     });
 
   projectApplyCommand = name: project:
-    assert migrationixPackage != null;
+    assert dbHarborPackage != null;
       lib.escapeShellArgs [
-        "${migrationixPackage}/bin/migrationix"
+        "${dbHarborPackage}/bin/db-harbor"
         "apply"
         "--manifest"
         (projectPlan name project)
       ];
 
   projectCheckCommand = name: project:
-    assert migrationixPackage != null;
+    assert dbHarborPackage != null;
       lib.escapeShellArgs [
-        "${migrationixPackage}/bin/migrationix"
+        "${dbHarborPackage}/bin/db-harbor"
         "check"
         "--manifest"
         (projectPlan name project)
@@ -543,14 +543,14 @@
   runtimeActivationService = name: migration:
     mkIf (migration.requiredByUnits != []) {
       description = "Start ${migration.description} runtime units after a successful migration";
-      after = ["migrationix-${name}.service"];
-      requires = ["migrationix-${name}.service"];
+      after = ["db-harbor-${name}.service"];
+      requires = ["db-harbor-${name}.service"];
       wantedBy = ["multi-user.target"];
       restartIfChanged = true;
       stopIfChanged = true;
       serviceConfig = {
         Type = "oneshot";
-        ExecStart = pkgs.writeShellScript "migrationix-${name}-start-runtime" ''
+        ExecStart = pkgs.writeShellScript "db-harbor-${name}-start-runtime" ''
           set -eu
           for unit in ${lib.escapeShellArgs migration.requiredByUnits}; do
             ${pkgs.systemd}/bin/systemctl reset-failed "$unit" || true
@@ -574,17 +574,21 @@
         };
     };
 in {
-  options.services.migrationix = {
+  imports = [
+    (lib.mkAliasOptionModule ["services" "db-harbor" "operations"] ["services" "db-harbor" "migrations"])
+  ];
+
+  options.services.db-harbor = {
     migrations = mkOption {
       type = types.attrsOf migrationType;
       default = {};
-      description = "Named idempotent migration commands managed as systemd oneshot units.";
+      description = "Compatibility name for named database operations managed as systemd units.";
     };
 
     projects = mkOption {
       type = types.attrsOf projectType;
       default = {};
-      description = "Higher-level project migration definitions lowered into migrationix.migrations.";
+      description = "Higher-level project database-operation definitions lowered into db-harbor.operations.";
     };
   };
 
@@ -595,15 +599,15 @@ in {
         operationAssertions = lib.flatten (lib.mapAttrsToList (operationName: operation: [
             {
               assertion = operation.runner.command != null || operation.runner.executable != null;
-              message = "services.migrationix.projects.${name}.operations.${operationName}: set runner.command or runner.executable";
+              message = "services.db-harbor.projects.${name}.operations.${operationName}: set runner.command or runner.executable";
             }
             {
               assertion = operation.runner.command != null || operation.runner.package == null || operation.runner.executable != null;
-              message = "services.migrationix.projects.${name}.operations.${operationName}: runner.package requires runner.executable when runner.command is unset";
+              message = "services.db-harbor.projects.${name}.operations.${operationName}: runner.package requires runner.executable when runner.command is unset";
             }
             {
               assertion = lib.all (dependency: builtins.hasAttr dependency operations) operation.dependsOn;
-              message = "services.migrationix.projects.${name}.operations.${operationName}: dependsOn references an unknown operation";
+              message = "services.db-harbor.projects.${name}.operations.${operationName}: dependsOn references an unknown operation";
             }
           ])
           operations);
@@ -611,31 +615,31 @@ in {
         [
           {
             assertion = operations != {};
-            message = "services.migrationix.projects.${name}: configure runner or at least one enabled operation";
+            message = "services.db-harbor.projects.${name}: configure runner or at least one enabled operation";
           }
           {
             assertion = !project.postgres.grants.enable || project.postgres.enable;
-            message = "services.migrationix.projects.${name}: postgres.grants.enable requires postgres.enable";
+            message = "services.db-harbor.projects.${name}: postgres.grants.enable requires postgres.enable";
           }
           {
             assertion = !project.postgres.grants.enable || project.postgres.databaseUrl != null;
-            message = "services.migrationix.projects.${name}: postgres.databaseUrl is required when postgres.grants.enable is set";
+            message = "services.db-harbor.projects.${name}: postgres.databaseUrl is required when postgres.grants.enable is set";
           }
           {
             assertion = !project.postgres.grants.enable || project.postgres.grants.runtimeRole != null;
-            message = "services.migrationix.projects.${name}: postgres.grants.runtimeRole is required when postgres.grants.enable is set";
+            message = "services.db-harbor.projects.${name}: postgres.grants.runtimeRole is required when postgres.grants.enable is set";
           }
           {
             assertion = !project.postgres.grants.enable || builtins.hasAttr "default" operations;
-            message = "services.migrationix.projects.${name}: postgres grants require the default migration operation";
+            message = "services.db-harbor.projects.${name}: postgres grants require the default migration operation";
           }
           {
             assertion = !project.postgres.grants.enable || project.postgres.grants.tablePrivileges != [];
-            message = "services.migrationix.projects.${name}: postgres.grants.tablePrivileges must not be empty";
+            message = "services.db-harbor.projects.${name}: postgres.grants.tablePrivileges must not be empty";
           }
           {
             assertion = !project.postgres.grants.enable || project.postgres.grants.sequencePrivileges != [];
-            message = "services.migrationix.projects.${name}: postgres.grants.sequencePrivileges must not be empty";
+            message = "services.db-harbor.projects.${name}: postgres.grants.sequencePrivileges must not be empty";
           }
           {
             assertion =
@@ -643,20 +647,20 @@ in {
               || lib.all
               (operation: operation.runner.checkCommand != null || operation.runner.checkArgs != null)
               (lib.attrValues operations);
-            message = "services.migrationix.projects.${name}: every enabled operation needs a read-only check when project checks are configured";
+            message = "services.db-harbor.projects.${name}: every enabled operation needs a read-only check when project checks are configured";
           }
         ]
         ++ operationAssertions)
       enabledProjects);
 
-      services.migrationix.migrations = lib.mapAttrs projectToMigration enabledProjects;
+      services.db-harbor.migrations = lib.mapAttrs projectToMigration enabledProjects;
     })
 
     (mkIf (enabledMigrations != {}) {
       assertions =
         lib.mapAttrsToList (name: _migration: {
           assertion = builtins.match "[A-Za-z0-9_.@-]+" name != null;
-          message = "services.migrationix.migrations.${name}: migration names must be valid systemd unit-name fragments";
+          message = "services.db-harbor.migrations.${name}: migration names must be valid systemd unit-name fragments";
         })
         enabledMigrations;
 
@@ -664,13 +668,13 @@ in {
         mkMerge
         [
           (lib.mapAttrs' (name: migration:
-            lib.nameValuePair "migrationix-${name}" (migrationService name migration))
+            lib.nameValuePair "db-harbor-${name}" (migrationService name migration))
           enabledMigrations)
           (lib.mapAttrs' (name: migration:
-            lib.nameValuePair "migrationix-${name}-check" (checkService name migration))
+            lib.nameValuePair "db-harbor-${name}-check" (checkService name migration))
           enabledMigrations)
           (lib.mapAttrs' (name: migration:
-            lib.nameValuePair "migrationix-${name}-activate" (runtimeActivationService name migration))
+            lib.nameValuePair "db-harbor-${name}-activate" (runtimeActivationService name migration))
           enabledMigrations)
         ];
     })

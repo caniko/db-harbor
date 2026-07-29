@@ -1,9 +1,10 @@
-//! Generic, database-agnostic migration plans.
+//! Generic, database-agnostic operation plans.
 //!
-//! Migrationix owns the lifecycle contract around migrations while the
-//! application that owns a schema supplies the actual commands. This keeps
-//! deployment orchestration reusable for SQLx, SeaORM, ClickHouse, and other
-//! migration engines without moving their schema knowledge into this crate.
+//! DB Harbor owns the lifecycle contract around database operations while
+//! the application or database owner supplies the actual commands. This keeps
+//! deployment orchestration reusable for schema changes, backfills, backups,
+//! maintenance, and operational cutovers without moving database knowledge
+//! into this crate.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -16,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::process::Command;
 
-/// The current serialized migration-plan format.
+/// The current serialized database-operation plan format.
 pub const PLAN_VERSION: u32 = 1;
 
 /// A database family used by an operation.
@@ -33,7 +34,7 @@ pub enum Backend {
     Generic,
 }
 
-/// The lifecycle phase of a migration operation.
+/// The lifecycle phase of a database operation.
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Phase {
@@ -92,7 +93,7 @@ impl CommandSpec {
     }
 }
 
-/// One ordered apply/check operation in a migration plan.
+/// One ordered apply/check operation in a database-operation plan.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct MigrationOperation {
     /// Stable operation identifier within its plan.
@@ -108,7 +109,7 @@ pub struct MigrationOperation {
     /// Command that applies the operation idempotently.
     pub apply: CommandSpec,
     /// Optional read-only command. A missing command is allowed for apply-only
-    /// operations but makes them unavailable to `migrationix check`.
+    /// operations but makes them unavailable to `db-harbor check`.
     #[serde(default)]
     pub check: Option<CommandSpec>,
     /// Operations that must complete before this operation.
@@ -116,7 +117,7 @@ pub struct MigrationOperation {
     pub depends_on: Vec<String>,
 }
 
-/// A versioned set of migration operations for one service or deployment.
+/// A versioned set of database operations for one service or deployment.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct MigrationPlan {
     /// Serialized plan format version.
@@ -126,6 +127,20 @@ pub struct MigrationPlan {
     /// Operations in declaration order. Dependencies determine execution order.
     pub operations: Vec<MigrationOperation>,
 }
+
+/// Neutral name for [`MigrationPlan`] while the db-harbor wire/API name is
+/// kept for compatibility. The serialized format remains unchanged.
+pub type DatabasePlan = MigrationPlan;
+
+/// Neutral name for [`MigrationOperation`] while the db-harbor wire/API
+/// name is kept for compatibility.
+pub type DatabaseOperation = MigrationOperation;
+
+/// Neutral name for [`Backend`] while the db-harbor API remains compatible.
+pub type DatabaseBackend = Backend;
+
+/// Neutral name for [`Phase`] while the db-harbor API remains compatible.
+pub type OperationPhase = Phase;
 
 impl MigrationPlan {
     /// Validate identifiers, references, commands, and dependency cycles.
