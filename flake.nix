@@ -20,12 +20,15 @@
     forAllSystems = f:
       nixpkgs.lib.genAttrs systems (system:
         let
-          pkgs = import nixpkgs {inherit system;};
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [(import rs-harbor.inputs.rust-overlay)];
+          };
           toolchain = rs-harbor.lib.mkToolchain { inherit pkgs; toolchainProfile = "stable"; };
         in
         f {
           inherit system pkgs toolchain;
-          craneLib = (crane.mkLib pkgs).overrideToolchain toolchain;
+          craneLib = toolchain.craneLib;
         });
   in {
     nixosModules.db-harbor = import ./nix/module.nix;
