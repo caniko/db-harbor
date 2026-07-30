@@ -2,7 +2,7 @@
   description = "db-harbor - generic database-operation plans and NixOS systemd wiring";
 
   inputs = {
-    rs-harbor.url = "git+https://codeberg.org/caniko/rs-harbor.git?ref=trunk&rev=9bfa8bdb0ecb22d7bc11448665f7fbaebae7a759";
+    rs-harbor.url = "git+https://codeberg.org/caniko/rs-harbor.git?ref=trunk&rev=c26b735eede8078f795651c4a9cbf0be8733b221";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     crane.url = "github:ipetkov/crane";
   };
@@ -19,10 +19,13 @@
     ];
     forAllSystems = f:
       nixpkgs.lib.genAttrs systems (system:
-        f {
-          inherit system;
+        let
           pkgs = import nixpkgs {inherit system;};
-          craneLib = crane.mkLib (import nixpkgs {inherit system;});
+          toolchain = rs-harbor.lib.mkToolchain { inherit pkgs; toolchainProfile = "stable"; };
+        in
+        f {
+          inherit system pkgs toolchain;
+          craneLib = (crane.mkLib pkgs).overrideToolchain toolchain;
         });
   in {
     nixosModules.db-harbor = import ./nix/module.nix;
